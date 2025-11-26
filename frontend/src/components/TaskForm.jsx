@@ -1,6 +1,8 @@
 import { useState } from "react";
 import axios from "axios";
 
+const API_URL = "https://atelier-backend-1-h1ba.onrender.com";
+
 export default function TaskForm({ clientId, onTaskAdded }) {
   const [service, setService] = useState("");
   const [description, setDescription] = useState("");
@@ -9,7 +11,7 @@ export default function TaskForm({ clientId, onTaskAdded }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await axios.post("http://localhost:3001/tasks", {
+    await axios.post(`${API_URL}/tasks`, {
       client_id: clientId,
       service,
       description,

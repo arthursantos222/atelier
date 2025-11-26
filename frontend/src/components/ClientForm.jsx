@@ -1,6 +1,8 @@
 import { useState } from "react";
 import axios from "axios";
 
+const API_URL = "https://atelier-backend-1-h1ba.onrender.com";
+
 export default function ClientForm({ onClientAdded }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -8,7 +10,7 @@ export default function ClientForm({ onClientAdded }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await axios.post("http://localhost:3001/clients", { name, phone, notes });
+    await axios.post(`${API_URL}/clients`, { name, phone, notes });
     setName(""); setPhone(""); setNotes("");
     onClientAdded();
   };

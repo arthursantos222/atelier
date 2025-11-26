@@ -1,22 +1,24 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
+const API_URL = "https://atelier-backend-1-h1ba.onrender.com";
+
 export default function TaskList({ clientId, refreshTrigger }) {
   const [tasks, setTasks] = useState([]);
 
   useEffect(() => {
     if (!clientId) return;
-    axios.get(`http://localhost:3001/tasks/client/${clientId}`)
+    axios.get(`${API_URL}/tasks/client/${clientId}`)
       .then(res => setTasks(res.data));
   }, [clientId, refreshTrigger]);
 
   const updateStatus = async (taskId, status) => {
-    const res = await axios.patch(`http://localhost:3001/tasks/${taskId}`, { status });
+    const res = await axios.patch(`${API_URL}/tasks/${taskId}`, { status });
     setTasks(tasks.map(t => t.id === taskId ? res.data.task : t));
   };
 
   const deleteTask = async (taskId) => {
-    await axios.delete(`http://localhost:3001/tasks/${taskId}`);
+    await axios.delete(`${API_URL}/tasks/${taskId}`);
     setTasks(tasks.filter(t => t.id !== taskId));
   };
 

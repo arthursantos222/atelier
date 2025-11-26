@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
+const API_URL = "https://atelier-backend-1-h1ba.onrender.com";
+
 export default function ClientList({ onSelectClient, refreshTrigger }) {
   const [clients, setClients] = useState([]);
 
   useEffect(() => {
-    axios.get("http://localhost:3001/clients").then(res => setClients(res.data));
+    axios.get(`${API_URL}/clients`).then(res => setClients(res.data));
   }, [refreshTrigger]);
 
   const deleteClient = async (id) => {
-    await axios.delete(`http://localhost:3001/clients/${id}`);
+    await axios.delete(`${API_URL}/clients/${id}`);
     setClients(clients.filter(c => c.id !== id));
   };
 
