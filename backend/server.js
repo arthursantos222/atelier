@@ -1,30 +1,35 @@
 const express = require("express");
 const cors = require("cors");
+require("dotenv").config();
 const { Pool } = require("pg");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Conexão com PostgreSQL
+// -------------------- CONFIGURAÇÃO DO POSTGRES -------------------- //
+console.log("🔹 DATABASE_URL:", process.env.DATABASE_URL);
+
+if (!process.env.DATABASE_URL) {
+  console.error("❌ Erro: DATABASE_URL não está definida!");
+  process.exit(1);
+}
+
 const pool = new Pool({
-  user: "postgres",
-  host: "localhost",
-  database: "atelier",
-  password: "senai",
-  port: 5432,
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false, // necessário para Render
+  },
 });
 
 // -------------------- ROTAS -------------------- //
 
-// Rota teste
 app.get("/", (req, res) => {
-  res.send("API do Ateliê funcionando!");
+  res.send("API do Ateliê funcionando com Render DB!");
 });
 
 // ---------- CLIENTES ---------- //
 
-// Criar cliente
 app.post("/clients", async (req, res) => {
   try {
     const { name, phone, notes } = req.body;
@@ -39,7 +44,6 @@ app.post("/clients", async (req, res) => {
   }
 });
 
-// Listar todos clientes
 app.get("/clients", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM clients ORDER BY id ASC;");
@@ -50,7 +54,6 @@ app.get("/clients", async (req, res) => {
   }
 });
 
-// Deletar cliente
 app.delete("/clients/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -64,7 +67,6 @@ app.delete("/clients/:id", async (req, res) => {
 
 // ---------- TAREFAS ---------- //
 
-// Criar tarefa
 app.post("/tasks", async (req, res) => {
   try {
     const { client_id, service, description, price, delivery_date } = req.body;
@@ -80,7 +82,6 @@ app.post("/tasks", async (req, res) => {
   }
 });
 
-// Listar todas tarefas de um cliente
 app.get("/tasks/client/:clientId", async (req, res) => {
   try {
     const { clientId } = req.params;
@@ -95,7 +96,6 @@ app.get("/tasks/client/:clientId", async (req, res) => {
   }
 });
 
-// Atualizar status da tarefa
 app.patch("/tasks/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -111,7 +111,6 @@ app.patch("/tasks/:id", async (req, res) => {
   }
 });
 
-// Deletar tarefa
 app.delete("/tasks/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -124,6 +123,8 @@ app.delete("/tasks/:id", async (req, res) => {
 });
 
 // -------------------- START SERVER -------------------- //
-app.listen(3001, () => {
-  console.log("🚀 Servidor rodando na porta 3001");
+
+const port = process.env.PORT || 3001;
+app.listen(port, () => {
+  console.log(`🚀 Servidor rodando na porta ${port}`);
 });
