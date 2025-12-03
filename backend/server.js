@@ -18,18 +18,18 @@ if (!process.env.DATABASE_URL) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectUnauthorized: false, // necessário para Render
+    rejectUnauthorized: false,
   },
 });
 
 // -------------------- ROTAS -------------------- //
 
+// Rota de teste
 app.get("/", (req, res) => {
   res.send("API do Ateliê funcionando com Render DB!");
 });
 
-// ---------- CLIENTES ---------- //
-
+// ---------- CLIENTES ----------
 app.post("/clients", async (req, res) => {
   try {
     const { name, phone, notes } = req.body;
@@ -50,7 +50,7 @@ app.get("/clients", async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error("Erro ao listar clientes:", error);
-    res.status(500).json({ error: "Erro interno" });
+    res.status(500).json({ error: "Erro interno ao listar clientes" });
   }
 });
 
@@ -61,69 +61,11 @@ app.delete("/clients/:id", async (req, res) => {
     res.json({ message: "Cliente deletado com sucesso!" });
   } catch (error) {
     console.error("Erro ao deletar cliente:", error);
-    res.status(500).json({ error: "Erro interno" });
+    res.status(500).json({ error: "Erro interno ao deletar cliente" });
   }
 });
 
-// ---------- TAREFAS ---------- //
-
-app.post("/tasks", async (req, res) => {
-  try {
-    const { client_id, service, description, price, delivery_date } = req.body;
-    const result = await pool.query(
-      `INSERT INTO tasks (client_id, service, description, price, delivery_date)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *;`,
-      [client_id, service, description, price, delivery_date]
-    );
-    res.json({ message: "Tarefa criada com sucesso!", task: result.rows[0] });
-  } catch (error) {
-    console.error("Erro ao criar tarefa:", error);
-    res.status(500).json({ error: "Erro interno ao criar tarefa" });
-  }
-});
-
-app.get("/tasks/client/:clientId", async (req, res) => {
-  try {
-    const { clientId } = req.params;
-    const result = await pool.query(
-      "SELECT * FROM tasks WHERE client_id = $1 ORDER BY delivery_date ASC;",
-      [clientId]
-    );
-    res.json(result.rows);
-  } catch (error) {
-    console.error("Erro ao listar tarefas:", error);
-    res.status(500).json({ error: "Erro interno" });
-  }
-});
-
-app.patch("/tasks/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-    const result = await pool.query(
-      "UPDATE tasks SET status = $1 WHERE id = $2 RETURNING *;",
-      [status, id]
-    );
-    res.json({ message: "Status atualizado!", task: result.rows[0] });
-  } catch (error) {
-    console.error("Erro ao atualizar status:", error);
-    res.status(500).json({ error: "Erro interno" });
-  }
-});
-
-app.delete("/tasks/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query("DELETE FROM tasks WHERE id = $1;", [id]);
-    res.json({ message: "Tarefa deletada com sucesso!" });
-  } catch (error) {
-    console.error("Erro ao deletar tarefa:", error);
-    res.status(500).json({ error: "Erro interno" });
-  }
-});
-
-// ---------- ORDERS (PEDIDOS) ---------- //
-
+// ---------- PEDIDOS ----------
 app.post("/orders", async (req, res) => {
   try {
     const { client_id, title, description } = req.body;
@@ -157,16 +99,97 @@ app.get("/orders", async (req, res) => {
 app.get("/orders/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pool.query(`SELECT * FROM orders WHERE id = $1`, [id]);
-    res.json(result.rows[0]);
+
+    // Busca pedido
+    const orderResult = await pool.query(
+      `SELECT orders.*, clients.name AS client_name
+       FROM orders
+       LEFT JOIN clients ON clients.id = orders.client_id
+       WHERE orders.id = $1;`,
+      [id]
+    );
+    const order = orderResult.rows[0];
+
+    if (!order) {
+      return res.status(404).json({ error: "Pedido não encontrado" });
+    }
+
+    // Busca tarefas do pedido
+    const tasksResult = await pool.query(
+      "SELECT * FROM tasks WHERE order_id = $1 ORDER BY id ASC;",
+      [id]
+    );
+
+    // Calcula total
+    const total = tasksResult.rows.reduce((acc, task) => acc + parseFloat(task.price || 0), 0);
+
+    order.tasks = tasksResult.rows;
+    order.total = total.toFixed(2);
+
+    res.json(order);
   } catch (error) {
     console.error("Erro ao buscar pedido:", error);
     res.status(500).json({ error: "Erro interno ao buscar pedido" });
   }
 });
 
-// -------------------- START SERVER -------------------- //
+// ---------- TAREFAS ----------
+app.post("/tasks", async (req, res) => {
+  try {
+    const { client_id, order_id, service, description, price, delivery_date } = req.body;
+    const result = await pool.query(
+      `INSERT INTO tasks (client_id, order_id, service, description, price, delivery_date)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *;`,
+      [client_id, order_id, service, description, price, delivery_date]
+    );
+    res.json({ message: "Tarefa criada com sucesso!", task: result.rows[0] });
+  } catch (error) {
+    console.error("Erro ao criar tarefa:", error);
+    res.status(500).json({ error: "Erro interno ao criar tarefa" });
+  }
+});
 
+app.get("/tasks/client/:clientId", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const result = await pool.query(
+      "SELECT * FROM tasks WHERE client_id = $1 ORDER BY delivery_date ASC;",
+      [clientId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Erro ao listar tarefas:", error);
+    res.status(500).json({ error: "Erro interno ao listar tarefas" });
+  }
+});
+
+app.patch("/tasks/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const result = await pool.query(
+      "UPDATE tasks SET status = $1 WHERE id = $2 RETURNING *;",
+      [status, id]
+    );
+    res.json({ message: "Status atualizado!", task: result.rows[0] });
+  } catch (error) {
+    console.error("Erro ao atualizar status:", error);
+    res.status(500).json({ error: "Erro interno ao atualizar status" });
+  }
+});
+
+app.delete("/tasks/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query("DELETE FROM tasks WHERE id = $1;", [id]);
+    res.json({ message: "Tarefa deletada com sucesso!" });
+  } catch (error) {
+    console.error("Erro ao deletar tarefa:", error);
+    res.status(500).json({ error: "Erro interno ao deletar tarefa" });
+  }
+});
+
+// -------------------- START SERVER -------------------- //
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
   console.log(`🚀 Servidor rodando na porta ${port}`);
