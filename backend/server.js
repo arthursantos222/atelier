@@ -18,7 +18,7 @@ if (!process.env.DATABASE_URL) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectUnauthorized: false, // necessário para Render
+    rejectUnauthorized: false,
   },
 });
 
@@ -28,7 +28,9 @@ app.get("/", (req, res) => {
   res.send("API do Ateliê funcionando com Render DB!");
 });
 
-// ---------- CLIENTES ---------- //
+// -----------------------------------------------------------
+// -------------------------- CLIENTES ------------------------
+// -----------------------------------------------------------
 
 app.post("/clients", async (req, res) => {
   try {
@@ -65,16 +67,87 @@ app.delete("/clients/:id", async (req, res) => {
   }
 });
 
-// ---------- TAREFAS ---------- //
+// -----------------------------------------------------------
+// -------------------------- ORDERS --------------------------
+// -----------------------------------------------------------
 
+// Criar pedido
+app.post("/orders", async (req, res) => {
+  try {
+    const { client_id, title, description } = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO orders (client_id, title, description)
+       VALUES ($1, $2, $3) RETURNING *;`,
+      [client_id, title, description]
+    );
+
+    res.json({ message: "Pedido criado!", order: result.rows[0] });
+  } catch (error) {
+    console.error("Erro ao criar pedido:", error);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+// Listar pedidos de um cliente
+app.get("/orders/client/:clientId", async (req, res) => {
+  try {
+    const { clientId } = req.params;
+
+    const result = await pool.query(
+      "SELECT * FROM orders WHERE client_id = $1 ORDER BY created_at DESC;",
+      [clientId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Erro ao listar pedidos:", error);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+// Listar tarefas dentro de um pedido
+app.get("/orders/:orderId/tasks", async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    const result = await pool.query(
+      "SELECT * FROM tasks WHERE order_id = $1 ORDER BY delivery_date ASC;",
+      [orderId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Erro ao listar tarefas do pedido:", error);
+    res.status(500).json({ error: "Erro interno" });
+  }
+});
+
+// -----------------------------------------------------------
+// -------------------------- TAREFAS --------------------------
+// -----------------------------------------------------------
+
+// Criar tarefa
 app.post("/tasks", async (req, res) => {
   try {
-    const { client_id, service, description, price, delivery_date } = req.body;
+    const { client_id, order_id, service, description, price, delivery_date } = req.body;
+
     const result = await pool.query(
-      `INSERT INTO tasks (client_id, service, description, price, delivery_date)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *;`,
-      [client_id, service, description, price, delivery_date]
+      `INSERT INTO tasks (client_id, order_id, service, description, price, delivery_date)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *;`,
+      [client_id, order_id, service, description, price, delivery_date]
     );
+
+    // Atualiza o total do pedido automaticamente
+    if (order_id) {
+      await pool.query(
+        `UPDATE orders 
+         SET total = COALESCE((SELECT SUM(price) FROM tasks WHERE order_id = $1), 0)
+         WHERE id = $1;`,
+        [order_id]
+      );
+    }
+
     res.json({ message: "Tarefa criada com sucesso!", task: result.rows[0] });
   } catch (error) {
     console.error("Erro ao criar tarefa:", error);
@@ -82,13 +155,16 @@ app.post("/tasks", async (req, res) => {
   }
 });
 
+// Listar tarefas de um cliente
 app.get("/tasks/client/:clientId", async (req, res) => {
   try {
     const { clientId } = req.params;
+
     const result = await pool.query(
       "SELECT * FROM tasks WHERE client_id = $1 ORDER BY delivery_date ASC;",
       [clientId]
     );
+
     res.json(result.rows);
   } catch (error) {
     console.error("Erro ao listar tarefas:", error);
@@ -96,14 +172,17 @@ app.get("/tasks/client/:clientId", async (req, res) => {
   }
 });
 
+// Atualizar status de tarefa
 app.patch("/tasks/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+
     const result = await pool.query(
       "UPDATE tasks SET status = $1 WHERE id = $2 RETURNING *;",
       [status, id]
     );
+
     res.json({ message: "Status atualizado!", task: result.rows[0] });
   } catch (error) {
     console.error("Erro ao atualizar status:", error);
@@ -111,10 +190,26 @@ app.patch("/tasks/:id", async (req, res) => {
   }
 });
 
+// Deletar tarefa
 app.delete("/tasks/:id", async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Buscar tarefa pra atualizar o total do pedido depois
+    const task = await pool.query("SELECT order_id FROM tasks WHERE id = $1", [id]);
+
     await pool.query("DELETE FROM tasks WHERE id = $1;", [id]);
+
+    // Atualizar total do pedido (se pertencer a um)
+    if (task.rows[0] && task.rows[0].order_id) {
+      await pool.query(
+        `UPDATE orders 
+         SET total = COALESCE((SELECT SUM(price) FROM tasks WHERE order_id = $1), 0)
+         WHERE id = $1;`,
+        [task.rows[0].order_id]
+      );
+    }
+
     res.json({ message: "Tarefa deletada com sucesso!" });
   } catch (error) {
     console.error("Erro ao deletar tarefa:", error);
